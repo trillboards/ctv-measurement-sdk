@@ -46,7 +46,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.github.trillboards:ctv-measurement-sdk:v1.0.0")
+    implementation("com.github.trillboards:ctv-measurement-sdk:1.0.2")
 }
 ```
 
@@ -77,8 +77,10 @@ import com.trillboards.measurement.*
 
 TrillboardsMeasurement.initialize(
     context = applicationContext,
-    config = MeasurementConfig.Builder()
-        .apiKey(BuildConfig.TRILLBOARDS_PARTNER_API_KEY)   // same key as your ads integration
+    config = MeasurementConfig.Builder(
+            apiKey = BuildConfig.TRILLBOARDS_PARTNER_API_KEY,   // same key as your ads integration
+            deviceId = yourStableDeviceId,                       // your existing per-device fingerprint (IMEI / serial / UUID)
+        )
         .scanIntervalMs(30_000L)
         .enabledSources(setOf(
             SignalSource.BLE, SignalSource.WIFI, SignalSource.MDNS,
