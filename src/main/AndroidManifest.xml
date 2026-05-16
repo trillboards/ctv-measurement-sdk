@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- ── Network access ────────────────────────────────────────────── -->
+    <!-- INTERNET: required for heartbeat upload + HTTP probe. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- ACCESS_NETWORK_STATE: required for the OkHttp client to inspect
+         connectivity before posting; agent-core-lite's ApiClient uses it. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- CHANGE_WIFI_MULTICAST_STATE: required for mDNS + SSDP discovery.
+         Without this, Android's netd silently drops inbound multicast UDP. -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+
+    <!-- ── BLE scanning ──────────────────────────────────────────────── -->
+    <!-- BLUETOOTH_SCAN: Android 12+ — neverForLocation flag exempts us from
+         FINE_LOCATION runtime grant on API 31+. -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+
+    <!-- BLUETOOTH_CONNECT: Android 12+ — required for BleGattEnumerator's
+         0x180A Device Information Service reads. agent-core-lite scanner
+         stack opportunistically reads Manufacturer / Model / Hardware /
+         Firmware Revision; the permission is optional (no enrichment if
+         not granted). -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <!-- ACCESS_FINE_LOCATION: Android 11 and below requires this for BLE
+         scanning. Capped via maxSdkVersion=30 so newer devices use
+         BLUETOOTH_SCAN+neverForLocation instead. -->
+    <uses-permission
+        android:name="android.permission.ACCESS_FINE_LOCATION"
+        android:maxSdkVersion="30" />
+
+    <!-- ── WiFi scanning ─────────────────────────────────────────────── -->
+    <!-- ACCESS_WIFI_STATE: normal permission, auto-granted at install. -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+
+    <!-- CHANGE_WIFI_STATE: required to call WifiManager.startScan() so we
+         pick up fresh scan results rather than 4-minute-stale OS caches. -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+
+    <!-- NEARBY_WIFI_DEVICES: Android 13+ replacement for FINE_LOCATION on
+         WifiManager.scanResults. Treat as the canonical permission for
+         API 33+. -->
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" />
+
+    <!-- ── Optional hardware features ────────────────────────────────── -->
+    <!-- BLE hardware is optional — SDK degrades gracefully on non-BLE devices -->
+    <uses-feature
+        android:name="android.hardware.bluetooth_le"
+        android:required="false" />
+
+    <!-- WiFi hardware is optional — SDK degrades gracefully on devices without WiFi -->
+    <uses-feature
+        android:name="android.hardware.wifi"
+        android:required="false" />
+
+</manifest>

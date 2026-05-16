@@ -1,0 +1,13 @@
+# JitPack build config for github.com/trillboards/ctv-measurement-sdk.
+# Coordinate published by JitPack:
+#   com.github.trillboards:ctv-measurement-sdk:<tag>
+
+jdk:
+  - openjdk17
+
+before_install:
+  - sdk install java 17.0.12-tem
+  - sdk use java 17.0.12-tem
+
+install:
+  - ./gradlew clean assembleRelease publishToMavenLocal -x test --stacktrace
