@@ -46,7 +46,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.github.trillboards:ctv-measurement-sdk:1.0.2")
+    implementation("com.github.trillboards:ctv-measurement-sdk:1.0.3")
 }
 ```
 

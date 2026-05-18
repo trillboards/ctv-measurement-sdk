@@ -6,7 +6,6 @@ import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import androidx.core.content.ContextCompat
 
 /**
  * Centralized permission and capability checks for BLE scanning.
@@ -23,15 +22,12 @@ internal object PermissionChecker {
      * - Android 11 and below: checks [Manifest.permission.ACCESS_FINE_LOCATION]
      */
     fun hasBlePermission(context: Context): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            ContextCompat.checkSelfPermission(
-                context, Manifest.permission.BLUETOOTH_SCAN
-            ) == PackageManager.PERMISSION_GRANTED
+        val perm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Manifest.permission.BLUETOOTH_SCAN
         } else {
-            ContextCompat.checkSelfPermission(
-                context, Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
+            Manifest.permission.ACCESS_FINE_LOCATION
         }
+        return context.checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED
     }
 
     /**

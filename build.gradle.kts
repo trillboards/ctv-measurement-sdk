@@ -58,32 +58,24 @@ publishing {
 }
 
 dependencies {
-    // ── AndroidX foundation ────────────────────────────────────────────────
-    implementation("androidx.core:core-ktx:1.10.1")
-    implementation("androidx.localbroadcastmanager:localbroadcastmanager:1.1.0")
-    implementation("androidx.activity:activity-ktx:1.8.2")
-    implementation("androidx.appcompat:appcompat:1.6.1")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
+    // Minimal POM by design — every dep below is justified by an actual import
+    // somewhere in the curated source tree. Adding anything else here will
+    // regress AGP 4.1 + Jetifier + compileSdk 30 partner builds. See the
+    // section-3 source-allowlist comment for which monorepo packages produce
+    // the imports each dep satisfies.
 
     // ── Kotlin coroutines ──────────────────────────────────────────────────
+    // Used by every scanner (Dispatchers.IO + withContext + withTimeoutOrNull)
+    // and by ScanScheduler / HeartbeatUploader in the SDK module.
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
-    // ── Networking (heartbeat + HTTP probe + socket.io bridge) ─────────────
-    implementation("io.socket:socket.io-client:2.1.0") {
-        exclude(group = "org.json", module = "json")
-    }
+    // ── OkHttp 4.11 — heartbeat POST + HTTP probe ──────────────────────────
+    // Pure JVM bytecode, Jetifier-clean, no compileSdk constraint.
+    // Used by core/net/ApiClient.kt.
     implementation("com.squareup.okhttp3:okhttp:4.11.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.11.0")
 
-    // ── Identity / consent / ad bridge ─────────────────────────────────────
-    implementation("com.google.android.gms:play-services-ads-identifier:18.0.1")
-    implementation("com.google.android.gms:play-services-ads-lite:23.6.0")
-    implementation("com.google.android.ump:user-messaging-platform:4.0.0")
-    implementation("com.google.android.gms:play-services-location:21.0.1")
-
-    // ── WebRTC for optional MDM remote view/control ────────────────────────
-    implementation("com.infobip:google-webrtc:1.0.45036")
-
     // ── JNA — required by the UniFFI-generated discovery bindings ──────────
+    // (.aar variant ships the per-ABI native-lib loader; pure-Java, Jetifier-clean.)
     implementation("net.java.dev.jna:jna:5.13.0@aar")
 }

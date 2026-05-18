@@ -7,7 +7,6 @@ import android.net.wifi.ScanResult
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.util.Log
-import androidx.core.content.ContextCompat
 
 /**
  * Active WiFi scan collector — enumerates ALL nearby WiFi networks (not just connected).
@@ -134,17 +133,14 @@ object WifiScanCollector {
     }
 
     private fun hasPermission(context: Context): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        val perm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             // Android 13+: NEARBY_WIFI_DEVICES
-            ContextCompat.checkSelfPermission(
-                context, Manifest.permission.NEARBY_WIFI_DEVICES
-            ) == PackageManager.PERMISSION_GRANTED
+            Manifest.permission.NEARBY_WIFI_DEVICES
         } else {
             // Older: ACCESS_FINE_LOCATION
-            ContextCompat.checkSelfPermission(
-                context, Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
+            Manifest.permission.ACCESS_FINE_LOCATION
         }
+        return context.checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun getChannelWidth(result: ScanResult): Int? {

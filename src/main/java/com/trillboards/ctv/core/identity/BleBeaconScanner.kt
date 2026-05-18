@@ -12,7 +12,6 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
-import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -285,17 +284,14 @@ object BleBeaconScanner {
         )
 
     private fun hasPermission(context: Context): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val perm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             // Android 12+: BLUETOOTH_SCAN
-            ContextCompat.checkSelfPermission(
-                context, Manifest.permission.BLUETOOTH_SCAN
-            ) == PackageManager.PERMISSION_GRANTED
+            Manifest.permission.BLUETOOTH_SCAN
         } else {
             // Older: ACCESS_FINE_LOCATION covers BLE scanning
-            ContextCompat.checkSelfPermission(
-                context, Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
+            Manifest.permission.ACCESS_FINE_LOCATION
         }
+        return context.checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED
     }
 
 }

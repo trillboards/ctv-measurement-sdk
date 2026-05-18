@@ -60,7 +60,7 @@ public object TrillboardsMeasurement {
 
     private const val TAG = "TrillboardsMeasurement"
     private const val AGENT_TYPE = "ctv-measurement-sdk-android"
-    private const val AGENT_VERSION = "1.0.0"
+    private const val AGENT_VERSION = "1.0.3"
 
     @Volatile
     private var appContext: Context? = null
