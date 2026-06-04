@@ -14,7 +14,10 @@ plugins {
 
 android {
     namespace = "com.trillboards.measurement"
-    compileSdk = 34
+    // compileSdk tracks agent-core-lite (35). The curated source uses API-35 symbols
+    // (e.g. BluetoothDevice.addressType in BleBeaconScanner). compileSdk is build-time
+    // only — the AAR stays consumable on AGP 4.1 + minSdk 24 partners.
+    compileSdk = 35
 
     defaultConfig {
         minSdk = 24
