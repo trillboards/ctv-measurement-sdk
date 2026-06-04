@@ -27,7 +27,14 @@ data class WifiScanResult(
     val rawBssid: String,
     val signalStrengthDbm: Int,
     val frequencyMhz: Int,
-    val channelWidthMhz: Int?
+    val channelWidthMhz: Int?,
+    // ── Venue-insights PR 8 (Cut E.4) — WiFi enrichment fields ──
+    // Mirrors agent-core/identity/WifiScanCollector.kt. See that file for the
+    // canonical doc comments; keep both definitions byte-identical so the
+    // shared HeartbeatPayload can consume either module's WifiScanResult.
+    val capabilities: String = "",
+    val is80211mcResponder: Boolean = false,
+    val vendorOui2Byte: Int? = null
 )
 
 data class WifiScanSnapshot(
@@ -82,8 +89,14 @@ object WifiScanCollector {
                 .getSystemService(Context.WIFI_SERVICE) as? WifiManager
                 ?: return null
 
-            if (!wifiManager.isWifiEnabled) {
-                Log.d(TAG, "WiFi disabled — skipping scan")
+            // Scan-only support (Ethernet-only fleets): WiFi scanning works with the
+            // radio fully enabled OR with Android's "Wi-Fi scanning always available"
+            // (Settings.Global.wifi_scan_always_enabled) on. The latter powers the radio
+            // just enough to enumerate nearby APs WITHOUT joining a network or interfering
+            // with an active Ethernet link, so a device kept off WiFi for connectivity can
+            // still be positioned. startScan()/getScanResults() honor this mode.
+            if (!canScan(wifiManager.isWifiEnabled, isScanAlwaysAvailableSafe(wifiManager))) {
+                Log.d(TAG, "WiFi off and scan-only (scan-always-available) off — skipping scan")
                 return null
             }
 
@@ -114,7 +127,10 @@ object WifiScanCollector {
                     rawBssid = result.BSSID,
                     signalStrengthDbm = result.level,
                     frequencyMhz = result.frequency,
-                    channelWidthMhz = getChannelWidth(result)
+                    channelWidthMhz = getChannelWidth(result),
+                    capabilities = result.capabilities ?: "",
+                    is80211mcResponder = is80211mcResponderSafe(result),
+                    vendorOui2Byte = extractVendorOui2Byte(result.BSSID)
                 )
             }
 
@@ -129,6 +145,29 @@ object WifiScanCollector {
         } catch (e: Exception) {
             Log.w(TAG, "WiFi scan failed: ${e.message}")
             null
+        }
+    }
+
+    /**
+     * Whether a WiFi scan can be attempted. True when the radio is enabled OR when
+     * "Wi-Fi scanning always available" (scan-only mode) is on — the latter lets
+     * startScan()/getScanResults() enumerate nearby APs without the radio joining a
+     * network, so Ethernet-only devices can be positioned without enabling WiFi for
+     * connectivity (which can conflict with a wired link). Pure + internal for testing.
+     */
+    internal fun canScan(wifiEnabled: Boolean, scanAlwaysAvailable: Boolean): Boolean =
+        wifiEnabled || scanAlwaysAvailable
+
+    /**
+     * [WifiManager.isScanAlwaysAvailable] read defensively. Deprecated on API 30+ but
+     * still authoritative for the wifi_scan_always_enabled setting; any throw -> false.
+     */
+    private fun isScanAlwaysAvailableSafe(wifiManager: WifiManager): Boolean {
+        return try {
+            @Suppress("DEPRECATION")
+            wifiManager.isScanAlwaysAvailable
+        } catch (e: Throwable) {
+            false
         }
     }
 
@@ -159,6 +198,46 @@ object WifiScanCollector {
         } catch (e: Exception) {
             null
         }
+    }
+
+    /**
+     * Read [ScanResult.is80211mcResponder] safely. API 28+; false on older OS
+     * versions. See agent-core/identity/WifiScanCollector.kt for the
+     * canonical doc comment.
+     */
+    private fun is80211mcResponderSafe(result: ScanResult): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                result.is80211mcResponder
+            } else {
+                false
+            }
+        } catch (e: Throwable) {
+            false
+        }
+    }
+
+    /**
+     * Extract the first 2 bytes of a BSSID as a 16-bit unsigned integer.
+     * See agent-core/identity/WifiScanCollector.kt for the canonical doc.
+     */
+    internal fun extractVendorOui2Byte(bssid: String?): Int? {
+        if (bssid.isNullOrEmpty()) return null
+        var value = 0
+        var hexCount = 0
+        for (ch in bssid) {
+            if (ch == ':' || ch == '-' || ch == '.' || ch == ' ') continue
+            val digit = when (ch) {
+                in '0'..'9' -> ch.code - '0'.code
+                in 'a'..'f' -> ch.code - 'a'.code + 10
+                in 'A'..'F' -> ch.code - 'A'.code + 10
+                else -> return null
+            }
+            value = (value shl 4) or digit
+            hexCount++
+            if (hexCount == 4) return value
+        }
+        return null
     }
 
 }

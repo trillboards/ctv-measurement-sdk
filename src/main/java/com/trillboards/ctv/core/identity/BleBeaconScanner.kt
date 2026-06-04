@@ -2,6 +2,7 @@ package com.trillboards.ctv.core.identity
 
 import android.Manifest
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.BluetoothLeScanner
 import android.bluetooth.le.ScanCallback
@@ -49,7 +50,15 @@ data class BleScanResultData(
     val txPowerDbm: Int? = null,
     val ibeaconUuid: String? = null,
     val ibeaconMajor: Int? = null,
-    val ibeaconMinor: Int? = null
+    val ibeaconMinor: Int? = null,
+    // Venue-insights PR 7 (E.2): per-device address type from
+    // `BluetoothDevice.getAddressType()` (API 31+). Mirrored from agent-core
+    // — see that fork for full doc. lite-fork agents on older budget
+    // hardware will mostly emit null here (server defaults to 'unknown').
+    val addrType: String? = null,
+    // Venue-insights PR 7 (E.3): paired-device flag from
+    // `BluetoothDevice.getBondState()`. Mirrored from agent-core fork.
+    val isPaired: Boolean? = null
 )
 
 data class BleScanSnapshot(
@@ -71,7 +80,10 @@ data class BleScanSnapshot(
 object BleBeaconScanner {
 
     private const val TAG = "BleBeaconScanner"
-    private const val DEFAULT_SCAN_DURATION_MS = 5000L
+    // Per-cycle scan window. Mirror of agent-core fork (PR 7 E.1): bumped
+    // 5s → 30s to capture multiple ADV intervals from slower (Samsung ~1-2 Hz)
+    // advertisers. The lite fork keeps LOW_POWER so no radio-thrash concern.
+    private const val DEFAULT_SCAN_DURATION_MS = 30000L
 
     // Skip-reason enum — mirror of agent-core's BleBeaconScanner SKIP_*
     // constants. Kept in lockstep so both forks emit identical wire
@@ -82,8 +94,16 @@ object BleBeaconScanner {
     const val SKIP_BLUETOOTH_DISABLED = "bluetooth_disabled"
     const val SKIP_SCANNER_UNAVAILABLE = "scanner_unavailable"
     const val SKIP_ALREADY_IN_PROGRESS = "already_in_progress"
-    private const val MAX_SCAN_DURATION_MS = 10000L
+    // Bumped 10s → 60s mirror of agent-core fork.
+    private const val MAX_SCAN_DURATION_MS = 60000L
     private const val MAX_DEVICES = 100
+
+    // Venue-insights PR 7 (E.2): BluetoothDevice address-type constants.
+    // Mirror of agent-core fork — see that file for full doc.
+    private const val BT_ADDR_TYPE_PUBLIC = 0
+    private const val BT_ADDR_TYPE_RANDOM = 1
+    private const val BT_ADDR_TYPE_ANONYMOUS = 0xff
+    private const val BT_ADDR_TYPE_UNKNOWN_SENTINEL = 0xfe
 
     private val scanInProgress = AtomicBoolean(false)
 
@@ -144,11 +164,34 @@ object BleBeaconScanner {
             val scanStart = System.currentTimeMillis()
             val discoveredDevices = CopyOnWriteArrayList<ScanResult>()
 
-            // Use low-power scan mode to conserve battery on always-on CTV devices
-            val settings = ScanSettings.Builder()
+            // Venue-insights PR 7 (E.1): lite fork stays on LOW_POWER. lite
+            // ships to budget hardware where combo BT+WiFi radios dominate
+            // and LOW_LATENCY would risk WiFi-throughput regression. agent-
+            // core does the hardware-gated LOW_LATENCY decision via
+            // DeviceProfile.hasSeparateBtWifiRadios — lite has no equivalent
+            // capability matrix, so the safe default applies.
+            //
+            // setLegacy(false) + setPhy(PHY_LE_ALL_SUPPORTED) opt into BLE 5
+            // extended advertising — captures both the legacy 1M PHY and the
+            // BLE 5 Coded/2M PHY broadcasters. No-op on older devices; the
+            // setters exist since API 26.
+            val settingsBuilder = ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)
                 .setReportDelay(0) // Immediate results
-                .build()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                settingsBuilder.setLegacy(false)
+                settingsBuilder.setPhy(ScanSettings.PHY_LE_ALL_SUPPORTED)
+            }
+            val settings = settingsBuilder.build()
+
+            Log.i(
+                TAG,
+                "[BleBeaconScanner] scanMode=LOW_POWER" +
+                    ", window=${effectiveDuration}ms" +
+                    ", setLegacy=false" +
+                    ", phy=PHY_LE_ALL_SUPPORTED" +
+                    ", fork=lite"
+            )
 
             val callback = object : ScanCallback() {
                 override fun onScanResult(callbackType: Int, result: ScanResult?) {
@@ -215,7 +258,13 @@ object BleBeaconScanner {
                     rawAddress = result.device.address,
                     rssi = result.rssi,
                     deviceType = try { result.device.type } catch (_: Exception) { 0 },
-                    scanRecordBytes = try { result.scanRecord?.bytes } catch (_: Exception) { null }
+                    scanRecordBytes = try { result.scanRecord?.bytes } catch (_: Exception) { null },
+                    // Venue-insights PR 7 (E.2): address type from
+                    // BluetoothDevice.getAddressType() (API 31+).
+                    addrType = readAddressType(result.device),
+                    // Venue-insights PR 7 (E.3): bondState from
+                    // BluetoothDevice.getBondState().
+                    isPaired = readBondState(result.device)
                 )
             }
 
@@ -227,6 +276,18 @@ object BleBeaconScanner {
             )
 
             Log.d(TAG, "BLE scan complete: ${devices.size} devices in ${scanDuration}ms")
+            // Venue-insights PR 7 (E.2/E.3): mirror of agent-core fork —
+            // per-cycle addr_type + is_paired distribution log.
+            if (devices.isNotEmpty()) {
+                val addrTypeHistogram = devices.groupingBy { it.addrType ?: "null" }.eachCount()
+                val pairedCount = devices.count { it.isPaired == true }
+                Log.i(
+                    TAG,
+                    "[BleBeaconScanner] capture summary: " +
+                        "addr_type=$addrTypeHistogram, " +
+                        "is_paired_count=$pairedCount/${devices.size}"
+                )
+            }
             snapshot
         } catch (e: Exception) {
             Log.w(TAG, "BLE scan failed: ${e.message}")
@@ -239,13 +300,19 @@ object BleBeaconScanner {
     /**
      * Pure-domain builder used by [scan] and exposed for JVM unit tests so the
      * parser-wiring path can be exercised without an Android emulator.
+     *
+     * Mirror of agent-core fork — [addrType] and [isPaired] are venue-insights
+     * PR 7 (E.2/E.3) additions captured at the scan-callback boundary in [scan].
      */
     @JvmStatic
+    @JvmOverloads
     fun buildResultData(
         rawAddress: String,
         rssi: Int,
         deviceType: Int,
-        scanRecordBytes: ByteArray?
+        scanRecordBytes: ByteArray?,
+        addrType: String? = null,
+        isPaired: Boolean? = null
     ): BleScanResultData {
         val parsed = BleAdvertisementParser.parse(scanRecordBytes ?: byteArrayOf())
         return BleScanResultData(
@@ -263,8 +330,48 @@ object BleBeaconScanner {
             txPowerDbm = parsed.txPowerDbm,
             ibeaconUuid = parsed.ibeaconUuid,
             ibeaconMajor = parsed.ibeaconMajor,
-            ibeaconMinor = parsed.ibeaconMinor
+            ibeaconMinor = parsed.ibeaconMinor,
+            addrType = addrType,
+            isPaired = isPaired
         )
+    }
+
+    /**
+     * Venue-insights PR 7 (E.2) — mirror of agent-core fork.
+     */
+    private fun readAddressType(device: BluetoothDevice?): String? {
+        if (device == null) return null
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null
+        return try {
+            when (val raw = device.addressType) {
+                BT_ADDR_TYPE_PUBLIC -> "public"
+                BT_ADDR_TYPE_RANDOM -> "random"
+                BT_ADDR_TYPE_ANONYMOUS -> "anonymous"
+                BT_ADDR_TYPE_UNKNOWN_SENTINEL -> "unknown"
+                else -> {
+                    Log.d(TAG, "Unknown BluetoothDevice.addressType raw=$raw")
+                    "unknown"
+                }
+            }
+        } catch (e: SecurityException) {
+            null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Venue-insights PR 7 (E.3) — mirror of agent-core fork.
+     */
+    private fun readBondState(device: BluetoothDevice?): Boolean? {
+        if (device == null) return null
+        return try {
+            device.bondState == BluetoothDevice.BOND_BONDED
+        } catch (e: SecurityException) {
+            null
+        } catch (e: Exception) {
+            null
+        }
     }
 
     /**

@@ -215,6 +215,15 @@ class ApiClient(
                         put("signal_dbm", n.signalStrengthDbm)
                         put("frequency_mhz", n.frequencyMhz)
                         n.channelWidthMhz?.let { put("channel_width_mhz", it) }
+                        // Codex P2 (PR #5753): mirror agent-core's wire serialization
+                        // for the 3 Cut-E.4 enrichment fields. Without these lines,
+                        // agent-core-lite fleet devices collect the values locally
+                        // (WifiScanCollector now populates them) but never ship them
+                        // to the server — the new CH columns stay empty for that
+                        // fleet slice.
+                        put("capabilities", n.capabilities)
+                        put("is_80211mc_responder", n.is80211mcResponder)
+                        n.vendorOui2Byte?.let { put("vendor_oui_2byte", it) }
                     })
                 }
             })
@@ -251,6 +260,10 @@ class ApiClient(
                         d.ibeaconUuid?.let { put("ibeacon_uuid", it) }
                         d.ibeaconMajor?.let { put("ibeacon_major", it) }
                         d.ibeaconMinor?.let { put("ibeacon_minor", it) }
+                        // Venue-insights PR 7 (E.2/E.3): address type + paired
+                        // state. Mirror of agent-core fork.
+                        d.addrType?.let { put("addr_type", it) }
+                        d.isPaired?.let { put("is_paired", it) }
                     })
                 }
             })
