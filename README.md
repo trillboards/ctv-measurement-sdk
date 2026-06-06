@@ -9,7 +9,7 @@ posts them to the Trillboards audience-resolution endpoint on a 30-second
 cadence. All aggregation and enrichment happens server-side — your app doesn't
 run any ML or write any client-side resolution code.
 
-Apache 2.0. Public. Anonymous-readable via JitPack.
+Apache 2.0. Public. Anonymous-readable via https://maven.trillboards.com/.
 
 ## Is this SDK for you?
 
@@ -37,7 +37,7 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url = uri("https://jitpack.io") }
+        maven { url = uri("https://maven.trillboards.com/") }
     }
 }
 ```
@@ -46,7 +46,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.github.trillboards:ctv-measurement-sdk:1.0.3")
+    implementation("com.trillboards:ctv-measurement:1.0.+")   // latest 1.0.x; pin e.g. 1.0.4 for reproducible builds
 }
 ```
 
